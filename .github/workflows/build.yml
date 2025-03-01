@@ -1,4 +1,4 @@
-name: Build Application
+name: Build and Release
 
 on:
   workflow_dispatch:
@@ -12,9 +12,29 @@ on:
           - all
           - windows
           - linux
+      tag:
+        description: '发布版本号 (例如 v1.0.0)'
+        required: true
 
 jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.event.inputs.tag }}
+          release_name: Release ${{ github.event.inputs.tag }}
+          draft: false
+          prerelease: false
+
   build-windows:
+    needs: create-release
     if: github.event.inputs.platform == 'all' || contains(github.event.inputs.platform, 'windows')
     runs-on: windows-latest
     strategy:
@@ -35,13 +55,18 @@ jobs:
         run: npm install
       - name: Build Windows
         run: npm run build:win:${{ matrix.arch }}
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+      - name: Upload to Release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          name: deepchat-${{ matrix.platform }}
-          path: dist/*
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./dist/deepchat-${{ matrix.platform }}.exe
+          asset_name: deepchat-${{ matrix.platform }}.exe
+          asset_content_type: application/octet-stream
 
   build-linux:
+    needs: create-release
     if: github.event.inputs.platform == 'all' || contains(github.event.inputs.platform, 'linux')
     runs-on: ubuntu-latest
     strategy:
@@ -60,8 +85,12 @@ jobs:
         run: npm install
       - name: Build Linux
         run: npm run build:linux:${{ matrix.arch }}
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+      - name: Upload to Release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          name: deepchat-${{ matrix.platform }}
-          path: dist/*
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./dist/deepchat-${{ matrix.platform }}
+          asset_name: deepchat-${{ matrix.platform }}
+          asset_content_type: application/octet-stream
